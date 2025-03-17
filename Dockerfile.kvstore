@@ -1,0 +1,34 @@
+
+FROM ubuntu:22.04 as builder
+WORKDIR /tidis
+
+RUN apt update -q
+RUN apt install -y -q cmake make lld git curl protobuf-compiler wget pkg-config libssl-dev
+RUN ln -s /usr/bin/python3 /usr/bin/python
+
+RUN apt install -y -q clang-13 
+RUN update-alternatives --skip-auto --install /usr/bin/cc cc /usr/lib/llvm-13/bin/clang 1000
+RUN update-alternatives --skip-auto --install /usr/bin/c++ c++ /usr/lib/llvm-13/bin/clang++ 1000
+
+COPY . .
+RUN sh ./replace_tikv_client_path.sh
+
+# Install Rustup
+RUN curl https://sh.rustup.rs -sSf | sh -s -- --no-modify-path --default-toolchain none -y
+ENV PATH /root/.cargo/bin/:$PATH
+# COPY rust-toolchain ./
+RUN rustup self update \
+ && rustup set profile minimal
+
+RUN  . ~/.cargo/env \
+  && make && make release
+
+RUN find ./ -name "tidis-server"
+
+FROM ubuntu:22.04
+COPY --from=builder /tidis/target/release/tidis-server /tidis-server
+
+RUN rm /bin/sh && ln -s /bin/bash /bin/sh
+
+#ENV LD_PRELOAD /usr/lib64/libjemalloc.so
+ENTRYPOINT /tidis-server --config /config/tidis-config.toml

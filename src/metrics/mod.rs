@@ -39,9 +39,9 @@ lazy_static! {
     )
     .unwrap();
     pub static ref REQUEST_CMD_FINISH_COUNTER: IntCounterVec = register_int_counter_vec!(
-        "tikv_redis_command_requests_finish_total",
+        "kvstore_apserver_kv_method_handle_count",
         "Request command finish counter",
-        &["cmd"]
+        &["app", "db", "table", "method", "error"]
     )
     .unwrap();
     pub static ref REQUEST_CMD_ERROR_COUNTER: IntCounterVec = register_int_counter_vec!(
@@ -51,10 +51,10 @@ lazy_static! {
     )
     .unwrap();
     pub static ref REQUEST_CMD_HANDLE_TIME: HistogramVec = register_histogram_vec!(
-        "tikv_redis_command_handle_time_duration_seconds",
+        "kvstore_apserver_kv_method_handling_milliseconds",
         "Bucketed histogram of command handle duration",
-        &["cmd"],
-        exponential_buckets(0.0005, 2.0, 20).unwrap()
+        &["app", "db", "table", "method", "method_type"],
+        vec![0.5, 1.0, 2.5, 5.0, 10.0, 20.0, 50.0, 100.0, 200.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0]
     )
     .unwrap();
     pub static ref REMOVED_EXPIRED_KEY_COUNTER: IntCounterVec = register_int_counter_vec!(

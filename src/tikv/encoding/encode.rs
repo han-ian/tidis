@@ -44,6 +44,23 @@ impl KeyEncoder {
         }
     }
 
+    pub fn encode_redis_router_key(&self, table_id: u64, meta_key: &Vec<u8>) -> Vec<u8> {
+        let mut key = Vec::with_capacity(128);
+        // key.push(RAW_KEY_PREFIX);
+
+        self.encode_int(&mut key, table_id as i64);
+        key.extend_from_slice(&self.encode_bytes(meta_key));
+
+        self.encode_int(&mut key, 1);
+
+        key.into()
+    }
+
+    pub fn encode_int(&self, b: &mut Vec<u8>, v: i64) {
+        let u = (v as u64) ^ 0x8000_0000_0000_0000; // 确保排序一致
+        b.extend_from_slice(&u.to_be_bytes()); // 直接转换为大端序
+    }
+
     pub fn encode_bytes(&self, key: &[u8]) -> Vec<u8> {
         let len = key.len();
         let mut index = 0;

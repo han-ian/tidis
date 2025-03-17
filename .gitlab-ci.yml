@@ -1,0 +1,22 @@
+variables:
+  GIT_SUBMODULE_STRATEGY: recursive
+
+stages:
+  - stage1
+  - stage2
+
+build-image-ubuntu:
+  stage: stage2
+  image: harbor.shopeemobile.com/di-cicd/kaniko:latest
+  tags:
+    - share-standard-sg6
+  before_script:
+    - mkdir -p /kaniko/.docker && echo "{\"auths\":{\"https://harbor.shopeemobile.com\":{\"username\":\"${CI_HARBOR_USR}\",\"password\":\"${CI_HARBOR_PWD}\"}}}" > /kaniko/.docker/config.json && cat /kaniko/.docker/config.json
+  script:
+    - export NOW_DATE=$(date +%Y%m%d)
+    - /kaniko/executor
+      --single-snapshot
+      --context "${CI_PROJECT_DIR}"
+      --dockerfile "${CI_PROJECT_DIR}/Dockerfile.kvstore"
+      --destination "harbor.shopeemobile.com/di-common/kvstore-tidis:${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_BRANCH}-${NOW_DATE}"
+    - echo "--- build image success ---"

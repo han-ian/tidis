@@ -1,5 +1,5 @@
-use crate::frame::{self, Frame};
 use crate::metrics::{DATA_TRAFFIC_IN, DATA_TRAFFIC_OUT};
+use crate::Frame;
 
 use async_std::io::{BufReader, BufWriter, WriteExt};
 use async_std::net::TcpStream;
@@ -166,7 +166,7 @@ impl Connection {
     /// enough data has been buffered yet, `Ok(None)` is returned. If the
     /// buffered data does not represent a valid frame, `Err` is returned.
     fn parse_frame(&mut self) -> crate::Result<(Option<Frame>, usize)> {
-        use frame::Error::Incomplete;
+        use crate::frame::Error::Incomplete;
 
         // Cursor is used to track the "current" location in the
         // buffer. Cursor also implements `Buf` from the `bytes` crate
@@ -314,6 +314,8 @@ impl Connection {
                 self.write_all(val).await?;
                 self.write_all(b"\r\n").await?;
             }
+            Frame::Raw(raw) => self.write_all(raw.as_slice()).await?,
+
             // Encoding an `Array` from within a value cannot be done using a
             // recursive strategy. In general, async fns do not support
             // recursion.

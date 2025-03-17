@@ -26,7 +26,7 @@ slog-term = { version = "2.4" }
 tokio = { version = "1", features = ["full"] }
 tokio-stream = "0.1"
 tokio-util = { version = "0.7.1", features = ["rt"] }
-tikv-client = { git = "https://github.com/yongman/client-rust.git", branch = "dev-scanner" }
+tikv-client = { git = "https://git.garena.com/yin.han/tikv-client-rust.git", branch = "tikv-redis" }
 #tikv-client = { path = "../client-rust" }
 lazy_static = "1.4.0"
 thiserror = "1"
@@ -44,12 +44,42 @@ futures = { version = "0.3", default-features = false }
 mlua = { version = "0.7.4", features = ["lua51", "async", "vendored", "macros", "send"]}
 sha1 = "0.10.0"
 hex = "0.4.3"
+# tikv_alloc = { workspace = true }
+jemallocator = "0.5"
+
+# [workspace.dependencies]
+# tikv_alloc = { path = "components/tikv_alloc" }
+
+
+[workspace]
+# See https://github.com/rust-lang/rfcs/blob/master/text/2957-cargo-features2.md
+# Without resolver = 2, using `cargo build --features x` to build `cmd`
+# will _not_ propagate the feature `x` into `cmd`'s direct dependencies.
+resolver = "2"
+members = [
+  # "components/tikv_alloc",
+]
+
+[features]
+# default = ["tikv_alloc/jemalloc"]
+
+[profile.dev]
+debug            = true # required for line numbers in tests, see tikv #5049
+debug-assertions = true
+incremental      = true
+opt-level = 0
+codegen-units = 4
+lto = false
+panic = 'unwind'
+overflow-checks = false
+rpath = false
 
 [profile.release]
 opt-level = 3
 debug = false
+codegen-units = 1
 lto = "thin"
-incremental = true
+incremental = false
 panic = 'unwind'
 debug-assertions = false
 overflow-checks = false

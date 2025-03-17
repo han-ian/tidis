@@ -1,12 +1,12 @@
 use crate::cluster::Cluster;
-use crate::gc::GcMaster;
+// use crate::gc::GcMaster;
 use crate::metrics::{
     CURRENT_CONNECTION_COUNTER, CURRENT_TLS_CONNECTION_COUNTER, REQUEST_CMD_COUNTER,
     REQUEST_CMD_ERROR_COUNTER, REQUEST_CMD_FINISH_COUNTER, REQUEST_CMD_HANDLE_TIME,
     REQUEST_COUNTER, TOTAL_CONNECTION_PROCESSED,
 };
 use crate::tikv::encoding::KeyDecoder;
-use crate::tikv::{get_txn_client, KEY_ENCODER};
+use crate::tikv::KEY_ENCODER;
 use crate::utils::{self, resp_err, resp_invalid_arguments, resp_ok, resp_queued, sleep};
 use crate::{
     async_gc_worker_number_or_default, config_cluster_broadcast_addr_or_default,
@@ -42,7 +42,7 @@ use crate::tikv::errors::{
     REDIS_DISCARD_WITHOUT_MULTI_ERR, REDIS_EXEC_WITHOUT_MULTI_ERR, REDIS_MULTI_NESTED_ERR,
 };
 
-use crate::cmd::{script_clear_killed, script_interuptted};
+// use crate::cmd::{script_clear_killed, script_interuptted};
 
 /// Server listener state. Created in the `run` call. It includes a `run` method
 /// which performs the TCP listening and initialization of per-connection state.
@@ -229,8 +229,8 @@ pub async fn run(
         expire: config_cluster_topology_expire_or_default(),
     };
 
-    let mut gc_master = GcMaster::new(async_gc_worker_number_or_default(), topo_holder.clone());
-    gc_master.start_workers().await;
+    // let mut gc_master = GcMaster::new(async_gc_worker_number_or_default(), topo_holder.clone());
+    // gc_master.start_workers().await;
 
     if tcp_enabled && !tls_enabled {
         let (notify_shutdown, _) = broadcast::channel(1);
@@ -257,9 +257,9 @@ pub async fn run(
             _ = topo_manager.run() => {
                 error!(LOGGER, "topology manager exit");
             }
-            _ = gc_master.run() => {
-                error!(LOGGER, "gc master exit");
-            }
+            // _ = gc_master.run() => {
+            //     error!(LOGGER, "gc master exit");
+            // }
             _ = shutdown => {
                 // The shutdown signal has been received.
                 info!(LOGGER, "shutting down");
@@ -300,9 +300,9 @@ pub async fn run(
             _ = topo_manager.run() => {
                 error!(LOGGER, "topology manager exit");
             }
-            _ = gc_master.run() => {
-                error!(LOGGER, "gc master exit");
-            }
+            // _ = gc_master.run() => {
+            //     error!(LOGGER, "gc master exit");
+            // }
             _ = shutdown => {
                 // The shutdown signal has been received.
                 info!(LOGGER, "shutting down");
@@ -362,9 +362,9 @@ pub async fn run(
             _ = topo_manager.run() => {
                 error!(LOGGER, "topology manager exit");
             }
-            _ = gc_master.run() => {
-                error!(LOGGER, "gc master exit");
-            }
+            // _ = gc_master.run() => {
+            //     error!(LOGGER, "gc master exit");
+            // }
             _ = shutdown => {
                 // The shutdown signal has been received.
                 info!(LOGGER, "shutting down");
@@ -613,61 +613,61 @@ impl TopologyManager {
         loop {
             interval.tick().await;
 
-            let mut txn_client = get_txn_client()?;
-            // do all work in one txn
-            let resp = txn_client
-                .exec_in_txn(None, |txn_rc| {
-                    let address = address.clone();
-                    let expire = expire;
-                    let mut topo_holder = topo_holder.clone();
-                    async move {
-                        let mut txn = txn_rc.lock().await;
-                        // refresh myself infomation to backend store
-                        let topo_key = KEY_ENCODER.encode_txnkv_cluster_topo(&address);
-                        let ttl = utils::timestamp_from_ttl(expire);
-                        let topo_value = KEY_ENCODER.encode_txnkv_cluster_topo_value(ttl);
-                        txn.put(topo_key, topo_value).await?;
+            // let mut txn_client = get_txn_client()?;
+            // // do all work in one txn
+            // let resp = txn_client
+            //     .exec_in_txn(None, |txn_rc| {
+            //         let address = address.clone();
+            //         let expire = expire;
+            //         let mut topo_holder = topo_holder.clone();
+            //         async move {
+            //             let mut txn = txn_rc.lock().await;
+            //             // refresh myself infomation to backend store
+            //             let topo_key = KEY_ENCODER.encode_txnkv_cluster_topo(&address);
+            //             let ttl = utils::timestamp_from_ttl(expire);
+            //             let topo_value = KEY_ENCODER.encode_txnkv_cluster_topo_value(ttl);
+            //             txn.put(topo_key, topo_value).await?;
 
-                        // expire stale entries
-                        // expire should be configured as 3 times of interval at least
-                        let topo_start_key = KEY_ENCODER.encode_txnkv_cluster_topo_start();
-                        let topo_end_key = KEY_ENCODER.encode_txnkv_cluster_topo_end();
-                        let range: Range<Key> = topo_start_key..topo_end_key;
-                        let bound_range: BoundRange = range.into();
-                        let iter = txn.scan(bound_range, u32::MAX).await?;
+            //             // expire stale entries
+            //             // expire should be configured as 3 times of interval at least
+            //             let topo_start_key = KEY_ENCODER.encode_txnkv_cluster_topo_start();
+            //             let topo_end_key = KEY_ENCODER.encode_txnkv_cluster_topo_end();
+            //             let range: Range<Key> = topo_start_key..topo_end_key;
+            //             let bound_range: BoundRange = range.into();
+            //             let iter = txn.scan(bound_range, u32::MAX).await?;
 
-                        let mut remaining_node = Vec::new();
+            //             let mut remaining_node = Vec::new();
 
-                        for kv in iter {
-                            let ts = KeyDecoder::decode_topo_value(&kv.1);
-                            let ttl = utils::ttl_from_timestamp(ts);
-                            if ttl == 0 {
-                                txn.delete(kv.0).await?;
-                            } else {
-                                let encoded_key: Vec<u8> = kv.0.into();
-                                let addr = KeyDecoder::decode_topo_key_addr(&encoded_key);
-                                remaining_node.push(String::from_utf8_lossy(addr).to_string());
-                            }
-                        }
+            //             for kv in iter {
+            //                 let ts = KeyDecoder::decode_topo_value(&kv.1);
+            //                 let ttl = utils::ttl_from_timestamp(ts);
+            //                 if ttl == 0 {
+            //                     txn.delete(kv.0).await?;
+            //                 } else {
+            //                     let encoded_key: Vec<u8> = kv.0.into();
+            //                     let addr = KeyDecoder::decode_topo_key_addr(&encoded_key);
+            //                     remaining_node.push(String::from_utf8_lossy(addr).to_string());
+            //                 }
+            //             }
 
-                        // update topology snapshot and build topology in local if needed
-                        // check if member changed
-                        if topo_holder.cluster_member_changed(&remaining_node) {
-                            topo_holder.update_topo(&remaining_node, &address);
-                        }
+            //             // update topology snapshot and build topology in local if needed
+            //             // check if member changed
+            //             if topo_holder.cluster_member_changed(&remaining_node) {
+            //                 topo_holder.update_topo(&remaining_node, &address);
+            //             }
 
-                        Ok(())
-                    }
-                    .boxed()
-                })
-                .await;
+            //             Ok(())
+            //         }
+            //         .boxed()
+            //     })
+            //     .await;
 
-            match resp {
-                Ok(_) => {}
-                Err(err) => {
-                    warn!(LOGGER, "topology update failed: {}", err);
-                }
-            }
+            // match resp {
+            //     Ok(_) => {}
+            //     Err(err) => {
+            //         warn!(LOGGER, "topology update failed: {}", err);
+            //     }
+            // }
 
             // random sleep a small period for jitter tick
             let jitter = rng.gen::<u8>();
@@ -729,9 +729,10 @@ impl Handler {
 
             debug!(
                 LOGGER,
-                "req {} -> {}, {:?}",
+                "req {} -> {}, {}, {:?}",
                 self.connection.peer_addr(),
                 self.connection.local_addr(),
+                cmd_name,
                 cmd
             );
 
@@ -761,85 +762,6 @@ impl Handler {
                             .write_frame(&resp_err(REDIS_AUTH_REQUIRED_ERR))
                             .await?;
                     } else {
-                        match cmd {
-                            Command::Eval(_) | Command::Evalsha(_) => {
-                                if self.lua.is_none() {
-                                    // initialize the mlua once in same connection
-                                    let lua = Lua::new();
-                                    // set script interupt handler
-                                    lua.set_hook(HookTriggers::every_line(), |_lua, _debug| {
-                                        if script_interuptted() {
-                                            warn!(
-                                                LOGGER,
-                                                "Script kiiled by user with SCRIPT KILL..."
-                                            );
-
-                                            script_clear_killed();
-
-                                            Err(mlua::Error::RuntimeError(
-                                                "Script kiiled by user with SCRIPT KILL..."
-                                                    .to_string(),
-                                            ))
-                                        } else {
-                                            Ok(())
-                                        }
-                                    })
-                                    .unwrap();
-
-                                    self.lua = Some(lua);
-                                }
-                            }
-                            Command::Multi(_) => {
-                                if self.inner_txn {
-                                    self.connection
-                                        .write_frame(&resp_err(REDIS_MULTI_NESTED_ERR))
-                                        .await?;
-                                } else {
-                                    self.inner_txn = true;
-                                    self.queued_commands.clear();
-                                    self.connection.write_frame(&resp_ok()).await?;
-                                }
-                            }
-                            Command::Exec(c) => {
-                                if !self.inner_txn {
-                                    self.connection
-                                        .write_frame(&resp_err(REDIS_EXEC_WITHOUT_MULTI_ERR))
-                                        .await?;
-                                } else {
-                                    self.inner_txn = false;
-                                    c.clone()
-                                        .exec(&mut self.connection, self.queued_commands.clone())
-                                        .await?;
-                                }
-
-                                let duration = Instant::now() - start_at;
-                                REQUEST_CMD_HANDLE_TIME
-                                    .with_label_values(&[&cmd_name])
-                                    .observe(duration_to_sec(duration));
-                                REQUEST_CMD_FINISH_COUNTER
-                                    .with_label_values(&[&cmd_name])
-                                    .inc();
-                                continue;
-                            }
-                            Command::Discard(_) => {
-                                if self.inner_txn {
-                                    self.inner_txn = false;
-                                    self.queued_commands.clear();
-                                    self.connection.write_frame(&resp_ok()).await?;
-                                } else {
-                                    self.connection
-                                        .write_frame(&resp_err(REDIS_DISCARD_WITHOUT_MULTI_ERR))
-                                        .await?;
-                                }
-                            }
-                            _ => {
-                                if self.inner_txn {
-                                    self.queued_commands.push(cmd);
-                                    self.connection.write_frame(&resp_queued()).await?;
-                                    continue;
-                                }
-                            }
-                        }
                         // Perform the work needed to apply the command. This may mutate the
                         // database state as a result.
                         //
@@ -854,7 +776,7 @@ impl Handler {
                                 &mut self.connection,
                                 self.cur_client.clone(),
                                 self.clients.clone(),
-                                &mut self.lua,
+                                // &mut self.lua,
                                 &mut self.shutdown,
                             )
                             .await
@@ -873,10 +795,10 @@ impl Handler {
 
             let duration = Instant::now() - start_at;
             REQUEST_CMD_HANDLE_TIME
-                .with_label_values(&[&cmd_name])
-                .observe(duration_to_sec(duration));
+                .with_label_values(&["test-tidis", "test-tidis", "test-tidis", &cmd_name, "read"])
+                .observe(duration_to_ms(duration));
             REQUEST_CMD_FINISH_COUNTER
-                .with_label_values(&[&cmd_name])
+                .with_label_values(&["test-tidis", "test-tidis", "test-tidis", &cmd_name, ""])
                 .inc();
         }
 
@@ -888,6 +810,12 @@ impl Handler {
 pub fn duration_to_sec(d: Duration) -> f64 {
     let nanos = f64::from(d.subsec_nanos());
     d.as_secs() as f64 + (nanos / 1_000_000_000.0)
+}
+
+#[inline]
+pub fn duration_to_ms(d: Duration) -> f64 {
+    let nanos = f64::from(d.subsec_nanos());
+    d.as_secs() as f64 + (nanos / 1_000_000.0)
 }
 
 impl Drop for Handler {

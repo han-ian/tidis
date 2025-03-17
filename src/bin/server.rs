@@ -18,6 +18,11 @@ use tokio::signal;
 
 use async_tls::TlsAcceptor;
 
+use jemallocator::Jemalloc;
+
+#[global_allocator]
+static GLOBAL: Jemalloc = Jemalloc;
+
 #[tokio::main]
 pub async fn main() -> tidis::Result<()> {
     let cli = Cli::from_args();

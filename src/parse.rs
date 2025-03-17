@@ -13,6 +13,8 @@ use std::{fmt, str, vec};
 pub(crate) struct Parse {
     /// Array frame iterator.
     parts: vec::IntoIter<Frame>,
+
+    pub frame: Frame,
 }
 
 /// Error encountered while parsing a frame.
@@ -34,12 +36,14 @@ impl Parse {
     ///
     /// Returns `Err` if `frame` is not an array frame.
     pub(crate) fn new(frame: Frame) -> Result<Parse, ParseError> {
+        let cloned_frame = frame.clone();
         let array = match frame {
             Frame::Array(array) => array,
             frame => return Err(format!("protocol error; expected array, got {:?}", frame).into()),
         };
 
         Ok(Parse {
+            frame: cloned_frame,
             parts: array.into_iter(),
         })
     }

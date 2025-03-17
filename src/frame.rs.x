@@ -8,6 +8,7 @@ use std::fmt;
 use std::io::Cursor;
 use std::num::TryFromIntError;
 use std::string::FromUtf8Error;
+use std::io::{self};
 
 /// A frame in the Redis protocol.
 #[derive(Clone, Debug)]
@@ -168,6 +169,115 @@ impl Frame {
             _ => unimplemented!(),
         }
     }
+
+    pub fn encode_array(&self,  frame: &Frame) -> io::Result<Vec<u8>>{
+        let mut output: Vec<u8> = Vec::with_capacity(128);
+        let output = &mut output;
+
+        match frame {
+            Frame::Array(val) => {
+                // Encode the frame type prefix. For an array, it is `*`.
+                self.write_all(output, b"*")?;
+
+                // Encode the length of the array.
+                self.write_decimal(output, val.len() as i64)?;
+
+                // Iterate and encode each entry in the array.
+                for entry in &**val {
+                    // TODO make this to be recursive
+                    // we need nested array response only for `cluster slots` command for now
+                    match entry {
+                        Frame::Array(val) => {
+                            self.write_all(output, b"*")?;
+                            self.write_decimal(output, val.len() as i64)?;
+                            for entry in &**val {
+                                match entry {
+                                    Frame::Array(val) => {
+                                        self.write_all(output, b"*")?;
+                                        self.write_decimal(output, val.len() as i64)?;
+                                        for entry in &**val {
+                                            self.write_value(output, entry)?;
+                                        }
+                                    }
+                                    _ => self.write_value(output, entry)?,
+                                }
+                            }
+                        }
+                        _ => self.write_value(output, entry)?,
+                    }
+                }
+            }
+            // The frame type is a literal. Encode the value directly.
+            _ => self.write_value(output, frame)?,
+        }
+
+        Ok(output.to_vec())
+    }
+
+    /// Write a frame literal to the stream
+    fn write_value(&self, output: &mut Vec<u8>, frame: &Frame) -> io::Result<()> {
+        match frame {
+            Frame::Simple(val) => {
+                self.write_all(output, b"+")?;
+                self.write_all(output, val.as_bytes())?;
+                self.write_all(output, b"\r\n")?;
+            }
+            Frame::ErrorString(val) => {
+                self.write_all(output, b"-")?;
+                self.write_all(output, val.as_bytes())?;
+                self.write_all(output, b"\r\n")?;
+            }
+            Frame::ErrorOwned(val) => {
+                self.write_all(output, b"-")?;
+                self.write_all(output, val.as_bytes())?;
+                self.write_all(output, b"\r\n")?;
+            }
+            Frame::Integer(val) => {
+                self.write_all(output, b":")?;
+                self.write_decimal(output, *val)?;
+            }
+            Frame::Null => {
+                self.write_all(output, b"$-1\r\n")?;
+            }
+            Frame::Bulk(val) => {
+                let len = val.len();
+
+                self.write_all(output, b"$")?;
+                self.write_decimal(output, len as i64)?;
+                self.write_all(output, val)?;
+                self.write_all(output, b"\r\n")?;
+            }
+            // Encoding an `Array` from within a value cannot be done using a
+            // recursive strategy. In general, async fns do not support
+            // recursion.
+            // We do support at most 3 nested array response in up-level for now.
+            Frame::Array(_val) => unreachable!(),
+        }
+
+        Ok(())
+    }
+
+    /// Write a decimal frame to the stream
+    fn write_decimal(&self, output: &mut Vec<u8>, val: i64) -> io::Result<()> {
+        use std::io::Write;
+
+        // Convert the value to a string
+        let mut buf: [u8; 20] = [0u8; 20];
+        let mut buf = Cursor::new(&mut buf[..]);
+        write!(&mut buf, "{}", val)?;
+
+        let pos = buf.position() as usize;
+        self.write_all(output, &buf.get_ref()[..pos])?;
+        self.write_all(output, b"\r\n")?;
+
+        Ok(())
+    }
+
+
+    fn write_all(&self, output: &mut Vec<u8>, data: &[u8]) -> io::Result<()> {
+        output.extend_from_slice( data );
+        Ok(())
+    }
 }
 
 impl PartialEq<&str> for Frame {
@@ -213,7 +323,10 @@ impl From<RTError> for Frame {
         match e {
             RTError::Owned(s) => Frame::ErrorOwned(s),
             RTError::String(s) => Frame::ErrorString(s),
-            RTError::TikvClient(_) => Frame::ErrorString("ERR tikv client error"),
+            RTError::TikvClient(tikv_err) => {
+                let err_msg = format!("ERR tikv client error: {:?}", tikv_err);
+                Frame::ErrorOwned(err_msg)
+            }
         }
     }
 }

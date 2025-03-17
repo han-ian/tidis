@@ -15,8 +15,9 @@ pub use cmd::Command;
 mod connection;
 pub use connection::Connection;
 
-pub mod frame;
-pub use frame::Frame;
+// pub mod frame;
+pub use tikv::frame;
+pub use tikv::frame::Frame;
 
 mod db;
 use db::Db;
@@ -36,7 +37,7 @@ pub use metrics::PrometheusServer;
 mod tikv;
 pub use tikv::do_async_connect;
 pub use tikv::do_async_raw_connect;
-pub use tikv::do_async_txn_connect;
+// pub use tikv::do_async_txn_connect;
 pub use tikv::set_instance_id;
 
 pub mod cluster;
@@ -105,7 +106,7 @@ pub use config::txn_region_backoff_delay_ms;
 pub use config::txn_retry_count;
 pub use config::Config;
 
-pub mod gc;
+// pub mod gc;
 
 use rand::{rngs::SmallRng, Rng, SeedableRng};
 

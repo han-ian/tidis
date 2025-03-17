@@ -24,19 +24,21 @@ use crate::{
 };
 
 use self::client::RawClientWrapper;
-use self::client::TxnClientWrapper;
+// use self::client::TxnClientWrapper;
 
 use self::errors::{AsyncResult, RTError};
 
 pub mod client;
 pub mod encoding;
 pub mod errors;
-pub mod hash;
-pub mod list;
-pub mod lua;
-pub mod set;
-pub mod string;
-pub mod zset;
+pub mod frame;
+// pub mod hash;
+// pub mod list;
+// pub mod lua;
+// pub mod set;
+// pub mod string;
+// pub mod zset;
+pub mod mix;
 
 lazy_static! {
     pub static ref PD_ADDRS: Arc<RwLock<Option<Vec<String>>>> = Arc::new(RwLock::new(None));
@@ -106,63 +108,63 @@ pub fn get_client() -> Result<RawClientWrapper, RTError> {
     Ok(ret)
 }
 
-pub fn get_txn_client() -> Result<TxnClientWrapper<'static>, RTError> {
-    if unsafe { TIKV_TXN_CLIENTS.is_none() } {
-        return Err(REDIS_BACKEND_NOT_CONNECTED_ERR);
-    }
-    let client = unsafe {
-        let mut idx = TIKV_TXN_CLIENT_IDX.load(Relaxed);
-        idx = (idx + 1) % TIKV_TXN_CLIENTS.as_ref().unwrap().len();
-        TIKV_TXN_CLIENT_IDX.store(idx, Relaxed);
+// pub fn get_txn_client() -> Result<TxnClientWrapper<'static>, RTError> {
+//     if unsafe { TIKV_TXN_CLIENTS.is_none() } {
+//         return Err(REDIS_BACKEND_NOT_CONNECTED_ERR);
+//     }
+//     let client = unsafe {
+//         let mut idx = TIKV_TXN_CLIENT_IDX.load(Relaxed);
+//         idx = (idx + 1) % TIKV_TXN_CLIENTS.as_ref().unwrap().len();
+//         TIKV_TXN_CLIENT_IDX.store(idx, Relaxed);
 
-        &TIKV_TXN_CLIENTS.as_ref().unwrap()[idx]
-    };
-    let ret = TxnClientWrapper::new(client);
-    Ok(ret)
-}
+//         &TIKV_TXN_CLIENTS.as_ref().unwrap()[idx]
+//     };
+//     let ret = TxnClientWrapper::new(client);
+//     Ok(ret)
+// }
 
 pub async fn sleep(ms: u32) {
     tokio::time::sleep(Duration::from_millis(ms as u64)).await;
 }
 
-pub async fn do_async_txn_connect(addrs: Vec<String>) -> AsyncResult<()> {
-    PD_ADDRS.write().unwrap().replace(addrs.clone());
+// pub async fn do_async_txn_connect(addrs: Vec<String>) -> AsyncResult<()> {
+//     PD_ADDRS.write().unwrap().replace(addrs.clone());
 
-    let mut config = tikv_client::Config::default()
-        .with_timeout(Duration::from_millis(backend_timeout_or_default()))
-        .with_kv_timeout(backend_timeout_or_default())
-        .with_kv_allow_batch(backend_allow_batch_or_default())
-        .with_kv_completion_queue_size(backend_completion_queue_size_or_default())
-        .with_kv_grpc_keepalive_time(backend_grpc_keepalive_time_or_default())
-        .with_kv_grpc_keepalive_timeout(backend_grpc_keepalive_timeout_or_default())
-        .with_kv_allow_batch(backend_allow_batch_or_default())
-        .with_kv_overload_threshold(backend_overload_threshold_or_default())
-        .with_kv_max_batch_size(backend_max_batch_size_or_default())
-        .with_kv_max_inflight_requests(backend_max_inflight_requests_or_default())
-        .with_kv_max_batch_wait_time(backend_max_batch_wait_time_or_default());
-    if !backend_ca_file_or_default().is_empty()
-        || !backend_cert_file_or_default().is_empty()
-        || !backend_key_file_or_default().is_empty()
-    {
-        config = config.with_security(
-            backend_ca_file_or_default(),
-            backend_cert_file_or_default(),
-            backend_key_file_or_default(),
-        );
-    }
-    let mut clients = Vec::with_capacity(conn_concurrency_or_default());
-    for _ in 0..conn_concurrency_or_default() {
-        let client =
-            TransactionClient::new_with_config(addrs.clone(), config.clone(), Some(LOGGER.clone()))
-                .await?;
-        clients.push(client);
-    }
-    unsafe {
-        TIKV_TXN_CLIENTS.replace(clients);
-    }
+//     let mut config = tikv_client::Config::default();
+//     //     .with_timeout(Duration::from_millis(backend_timeout_or_default()))
+//     //     .with_kv_timeout(backend_timeout_or_default())
+//     //     .with_kv_allow_batch(backend_allow_batch_or_default())
+//     //     .with_kv_completion_queue_size(backend_completion_queue_size_or_default())
+//     //     .with_kv_grpc_keepalive_time(backend_grpc_keepalive_time_or_default())
+//     //     .with_kv_grpc_keepalive_timeout(backend_grpc_keepalive_timeout_or_default())
+//     //     .with_kv_allow_batch(backend_allow_batch_or_default())
+//     //     .with_kv_overload_threshold(backend_overload_threshold_or_default())
+//     //     .with_kv_max_batch_size(backend_max_batch_size_or_default())
+//     //     .with_kv_max_inflight_requests(backend_max_inflight_requests_or_default())
+//     //     .with_kv_max_batch_wait_time(backend_max_batch_wait_time_or_default());
+//     // if !backend_ca_file_or_default().is_empty()
+//     //     || !backend_cert_file_or_default().is_empty()
+//     //     || !backend_key_file_or_default().is_empty()
+//     // {
+//     //     config = config.with_security(
+//     //         backend_ca_file_or_default(),
+//     //         backend_cert_file_or_default(),
+//     //         backend_key_file_or_default(),
+//     //     );
+//     // }
+//     let mut clients = Vec::with_capacity(conn_concurrency_or_default());
+//     for _ in 0..conn_concurrency_or_default() {
+//         let client =
+//             TransactionClient::new_with_config(addrs.clone(), config.clone(), Some(LOGGER.clone()))
+//                 .await?;
+//         clients.push(client);
+//     }
+//     unsafe {
+//         TIKV_TXN_CLIENTS.replace(clients);
+//     }
 
-    Ok(())
-}
+//     Ok(())
+// }
 
 pub async fn do_async_raw_connect(addrs: Vec<String>) -> AsyncResult<()> {
     let mut config = tikv_client::Config::default()
@@ -177,7 +179,7 @@ pub async fn do_async_raw_connect(addrs: Vec<String>) -> AsyncResult<()> {
             backend_key_file_or_default(),
         );
     }
-    let client = RawClient::new_with_config(addrs.clone(), config, Some(LOGGER.clone())).await?;
+    let client = RawClient::new_with_config(addrs.clone(), config).await?;
     unsafe {
         TIKV_RAW_CLIENT.replace(client);
     }
@@ -185,7 +187,7 @@ pub async fn do_async_raw_connect(addrs: Vec<String>) -> AsyncResult<()> {
 }
 
 pub async fn do_async_connect(addrs: Vec<String>) -> AsyncResult<()> {
-    do_async_txn_connect(addrs.clone()).await?;
+    // do_async_txn_connect(addrs.clone()).await?;
     do_async_raw_connect(addrs).await?;
     Ok(())
 }

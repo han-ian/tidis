@@ -1,4 +1,4 @@
-use crate::frame::Frame;
+use crate::Frame;
 use hex::ToHex;
 use mlua::{Lua, Value as LuaValue};
 use sha1::{Digest, Sha1};
@@ -142,6 +142,10 @@ pub fn redis_resp_to_lua_resp(resp: Frame, lua: &Lua) -> LuaValue {
                 // nil will be convert to boolean false
                 table.raw_set(idx + 1, v).unwrap();
             }
+            LuaValue::Table(table)
+        }
+        Frame::Raw(_) => {
+            let table = lua.create_table().unwrap();
             LuaValue::Table(table)
         }
     }
